@@ -17,6 +17,12 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,"Times New Roman
 header{background:var(--brown);color:#fff;padding:14px 18px;font-size:1.3rem;font-weight:bold;display:flex;justify-content:space-between;align-items:center}
 header small{display:block;font-weight:normal;font-size:.85rem;opacity:.85}
 #restart{background:transparent;color:#fff;border:1px solid #fff;border-radius:999px;padding:6px 12px;cursor:pointer;font-family:system-ui,sans-serif;font-size:.85rem}
+#keybtn{background:transparent;color:#fff;border:1px solid #fff;border-radius:999px;padding:6px 12px;cursor:pointer;font-family:system-ui,sans-serif;font-size:.85rem}
+#keybar{display:flex;gap:8px;padding:10px 16px;background:var(--bot);border-bottom:1px solid var(--line)}
+#keybar[hidden],#keynote[hidden]{display:none}
+#keybar input{flex:1;padding:8px 12px;font-size:.9rem}
+#keybar button{background:var(--brown);color:#fff;border:0;border-radius:999px;padding:0 14px;cursor:pointer;font-family:system-ui,sans-serif}
+#keynote{padding:6px 16px;font-family:system-ui,sans-serif;font-size:.8rem;color:var(--brown-d)}
 #chat{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
 .msg{max-width:82%;padding:10px 14px;border-radius:16px;line-height:1.45;white-space:pre-wrap;font-family:system-ui,sans-serif;font-size:.97rem}
 .bot{background:var(--bot);align-self:flex-start;border-bottom-left-radius:4px}
@@ -32,7 +38,9 @@ button:disabled{opacity:.5;cursor:default}
 </head>
 <body>
 <div class="app">
-  <header><div>Bookworm 📚<small>Your friendly book-finding buddy</small></div><button type="button" id="restart">↻ Restart</button></header>
+  <header><div>Bookworm 📚<small>Your friendly book-finding buddy</small></div><div style="display:flex;gap:8px"><button type="button" id="keybtn">🔑 API Key</button><button type="button" id="restart">↻ Restart</button></div></header>
+  <div id="keybar" hidden><input id="keyin" type="password" placeholder="Paste your API key here" autocomplete="off"><button type="button" id="keysave">Save</button><button type="button" id="keyclear">Clear</button></div>
+  <div id="keynote" hidden></div>
   <div id="chat"></div>
   <div id="chips"></div>
   <form id="f">
@@ -47,7 +55,33 @@ const RULES = "You are Bookworm 📚, a friendly, welcoming, and warm chatbot. Y
 
 const chat = document.getElementById("chat"), chips = document.getElementById("chips"),
       f = document.getElementById("f"), input = document.getElementById("in"), go = document.getElementById("go");
-let history = [], sample = null, busy = false;
+let history = [], sample = null, busy = false, apiKey = "";
+const MODEL = "claude-sonnet-5-5";
+const keybar = document.getElementById("keybar"), keyin = document.getElementById("keyin"), keynote = document.getElementById("keynote");
+try { apiKey = localStorage.getItem("bookworm_key") || ""; } catch(e) {}
+function showNote(){ keynote.hidden = !apiKey; keynote.textContent = apiKey ? "🔑 Using your API key (saved only in this browser)." : ""; }
+showNote();
+document.getElementById("keybtn").onclick = () => { keybar.hidden = !keybar.hidden; if(!keybar.hidden) keyin.focus(); };
+document.getElementById("keysave").onclick = () => {
+  apiKey = keyin.value.trim(); keyin.value = ""; keybar.hidden = true;
+  try { localStorage.setItem("bookworm_key", apiKey); } catch(e) {}
+  showNote();
+};
+document.getElementById("keyclear").onclick = () => {
+  apiKey = ""; keyin.value = ""; keybar.hidden = true;
+  try { localStorage.removeItem("bookworm_key"); } catch(e) {}
+  showNote();
+};
+async function viaKey(){
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{"content-type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body: JSON.stringify({model:MODEL, max_tokens:1000, system:RULES, messages:history})
+  });
+  const data = await res.json();
+  if(!res.ok){ const err = new Error(res.status === 401 ? "Your API key wasn’t accepted. Click 🔑 API Key to update it." : (data.error && data.error.message) || "Request failed."); err.keyError = true; throw err; }
+  return data.content.map(c => c.text || "").join("");
+}
 
 function add(text, who){
   const d = document.createElement("div");
@@ -74,15 +108,22 @@ async function send(text){
   busy = true; go.disabled = true;
   const bubble = add("Thinking… 📖", "bot");
   try{
-    if(!sample) sample = await claude.use("sample");
-    if(!sample) throw {code:"unavailable"};
-    const turns = history.map((m,i) => i===0 ? {role:m.role, content: RULES + "\n\nUser says: " + m.content} : m);
-    const r = await sample(turns, {cache:false, onText:({text}) => { bubble.textContent = text; chat.scrollTop = chat.scrollHeight; }});
-    bubble.textContent = r.text;
-    history.push({role:"assistant", content:r.text});
+    let reply = null;
+    if(apiKey){
+      try { reply = await viaKey(); bubble.textContent = reply; }
+      catch(e){ if(e.keyError) throw e; }   // network blocked (e.g. on the claude.ai link): fall back below
+    }
+    if(reply === null){
+      if(!sample) sample = await claude.use("sample");
+      if(!sample) throw {code:"unavailable"};
+      const turns = history.map((m,i) => i===0 ? {role:m.role, content: RULES + "\n\nUser says: " + m.content} : m);
+      const r = await sample(turns, {cache:false, onText:({text}) => { bubble.textContent = text; chat.scrollTop = chat.scrollHeight; }});
+      reply = r.text; bubble.textContent = reply;
+    }
+    history.push({role:"assistant", content:reply});
   }catch(e){
     history.pop();
-    bubble.textContent = (e && e.code === "not_granted")
+    bubble.textContent = (e && e.keyError) ? e.message : (e && e.code === "not_granted")
       ? "I need your permission to chat. Please allow it and try again! 📚"
       : "Oops, I couldn’t reach my bookshelf. Please try again in a moment.";
   }
