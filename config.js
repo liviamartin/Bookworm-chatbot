@@ -15,6 +15,9 @@ const BOT_CONFIG = {
     "What are some up and coming books?"
   ],
 
+  // AI model used when you add your own API key
+  model: "claude-sonnet-5-5",
+
   // Instructions that tell the AI how to behave
   systemInstructions:
     "You are Bookworm 📚, a friendly, welcoming, and warm chatbot. " +
