@@ -6,7 +6,7 @@ const BOT_CONFIG = {
   tagline: "Your friendly book-finding buddy",
 
   welcomeMessage:
-    "Hi! I’m Bookworm and I am here to help start your reading experience. What are you looking for?",
+    "Hi! I’m Bookworm and I am here to help find the best books for you! What are you looking for?",
 
   // Buttons people can click to start chatting
   starterQuestions: [
