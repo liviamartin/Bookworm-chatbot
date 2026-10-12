@@ -89,6 +89,20 @@ function add(text, who){
   d.className = "msg " + who; d.textContent = text;
   chat.appendChild(d); chat.scrollTop = chat.scrollHeight; return d;
 }
+function addCopy(bubble, text){
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = "📋 Copy";
+  b.style.cssText = "align-self:flex-start;margin-top:-6px;background:transparent;border:1px solid #8a8580;color:inherit;border-radius:999px;padding:3px 10px;font-size:.78rem;cursor:pointer;font-family:system-ui,sans-serif";
+  b.onclick = async () => {
+    try { await navigator.clipboard.writeText(text); }
+    catch(e) {
+      const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); } catch(e2) {} t.remove();
+    }
+    b.textContent = "✓ Copied"; setTimeout(() => b.textContent = "📋 Copy", 1500);
+  };
+  bubble.after(b); chat.scrollTop = chat.scrollHeight;
+}
 function start(){
   history = []; chat.innerHTML = ""; add(WELCOME, "bot"); chips.style.display = "flex";
 }
@@ -125,6 +139,7 @@ async function send(text){
       const r = await sample(turns, {cache:false, onText:({text}) => { bubble.textContent = text; chat.scrollTop = chat.scrollHeight; }});
       reply = r.text; bubble.textContent = reply;
     }
+    addCopy(bubble, reply);
     history.push({role:"assistant", content:reply});
   }catch(e){
     history.pop();
